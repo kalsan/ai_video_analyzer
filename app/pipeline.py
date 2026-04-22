@@ -41,16 +41,18 @@ def _update_yt_dlp() -> None:
 def _download_video(url: str, workdir: str) -> str:
     _update_yt_dlp()
     output_template = os.path.join(workdir, "video.%(ext)s")
-    _run(
-        [
-            "yt-dlp",
-            "--no-playlist",
-            "--format", "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
-            "--merge-output-format", "mkv",
-            "--output", output_template,
-            url,
-        ]
-    )
+    cmd = [
+        "yt-dlp",
+        "--no-playlist",
+        "--format", "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+        "--merge-output-format", "mkv",
+        "--output", output_template,
+    ]
+    cookies = "/data/cookies.txt"
+    if os.path.isfile(cookies):
+        cmd += ["--cookies", cookies]
+    cmd.append(url)
+    _run(cmd)
     matches = glob.glob(os.path.join(workdir, "video.*"))
     if not matches:
         raise PipelineError("yt-dlp produced no output file")
