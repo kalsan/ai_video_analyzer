@@ -44,6 +44,7 @@ def _download_video(url: str, workdir: str) -> str:
     cmd = [
         "yt-dlp",
         "--no-playlist",
+        "--js-runtimes", "node",
         "--format", "bestvideo[height<=720]+bestaudio/best[height<=720]/best",
         "--merge-output-format", "mkv",
         "--output", output_template,
