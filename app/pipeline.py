@@ -2,6 +2,7 @@ import glob
 import logging
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 from . import config, llm
@@ -32,14 +33,19 @@ def _run(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProcess:
     return proc
 
 
-def _update_yt_dlp() -> None:
-    proc = _run(["yt-dlp", "-U"], check=False)
+def update_yt_dlp() -> None:
+    """Upgrade yt-dlp + yt-dlp-ejs into user site-packages. User site wins over system."""
+    proc = _run(
+        [sys.executable, "-m", "pip", "install", "--user", "--quiet",
+         "--no-cache-dir", "-U", "yt-dlp", "yt-dlp-ejs"],
+        check=False,
+    )
     if proc.returncode != 0:
-        log.warning("yt-dlp -U exited %s: %s", proc.returncode, proc.stderr.strip())
+        log.warning("yt-dlp pip upgrade exited %s: %s",
+                    proc.returncode, proc.stderr.strip())
 
 
 def _download_video(url: str, workdir: str) -> str:
-    _update_yt_dlp()
     output_template = os.path.join(workdir, "video.%(ext)s")
     cmd = [
         "yt-dlp",

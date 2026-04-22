@@ -23,6 +23,7 @@ def start() -> None:
     """
     global _thread
     _wipe_workdir()
+    pipeline.update_yt_dlp()
     requeued = db.requeue_running()
     if requeued:
         log.info("recovered %d interrupted job(s): %s", len(requeued), requeued)
