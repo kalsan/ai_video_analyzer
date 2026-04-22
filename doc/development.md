@@ -92,10 +92,19 @@ Uvicorn logs + app logs go to stdout. Each job logs:
 
 ## Known gotchas
 
-- **yt-dlp self-update** runs before every download. Non-fatal if it
-  fails (offline, 403, etc.). If YouTube breaks the current version,
-  restart the container to pick up the latest pinned binary OR wait —
-  next job will self-update.
+- **yt-dlp upgrade** runs once on container startup via
+  `pip install --user -U yt-dlp yt-dlp-ejs` (installs into the runner's
+  user site-packages; user site wins over the image-baked version).
+  Non-fatal if it fails (offline, PyPI down, etc.) — the baked version
+  is used. If YouTube breaks the current version, restart the container.
+- **YouTube cookies** — optional `/data/cookies.txt` (Netscape format)
+  passed to yt-dlp when present. Required for age-gated / bot-challenged
+  videos. See [config.md](config.md#datacookiestxt-optional) for the
+  export procedure. If YouTube complains about invalid cookies, they
+  were rotated during export — re-do it from a private window.
+- **JS runtime for yt-dlp EJS** — image installs `nodejs`; yt-dlp is
+  invoked with `--js-runtimes node`. Required for the YouTube n-challenge
+  solver. Without it, only images are available and downloads fail.
 - **SQLite WAL** files (`jobs.db-wal`, `jobs.db-shm`) live next to
   `jobs.db`. They're normal. Do not delete while the service is running.
 - **Frames directory on crash:** workdir is wiped at startup, not

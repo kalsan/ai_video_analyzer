@@ -10,6 +10,24 @@ All config via environment variables. Defaults live in
 | `DB_PATH`  | `/data/jobs.db`  | SQLite file. Bind-mount the parent dir for persistence. |
 | `WORK_DIR` | `/work`          | Ephemeral per-job workdir. Wiped on startup. Do NOT bind-mount. |
 
+### `/data/cookies.txt` (optional)
+
+After a few requests, YouTube now requires users to log in. The session can be shared with this tool via cookie export, after which the YouTube will see the tool as logged in via your YouTube session.
+
+If a Netscape-format `cookies.txt` file exists at `/data/cookies.txt`,
+it is passed to `yt-dlp` via `--cookies`. Required for age-gated,
+member-only, or bot-challenged YouTube videos.
+
+**Export procedure**
+
+Under Firefox, use the `cookies.txt` extension and click "Copy website and container".
+
+If yt-dlp reports *"The provided YouTube account cookies are no longer
+valid"*, the cookies were rotated — re-export per the above.
+
+Omit the file entirely to skip cookie auth (fine for plain public
+videos).
+
 ## Pipeline knobs
 
 | Var                      | Default | Notes                                                       |

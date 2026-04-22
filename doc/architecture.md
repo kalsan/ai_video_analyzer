@@ -108,12 +108,15 @@ Public API:
 1. `shutil.rmtree` everything under `$WORK_DIR`. Abandoned frames / video
    files from crashed jobs get freed. Persistent state (DB) is never
    touched here.
-2. `UPDATE jobs SET status='queued' WHERE status='running'`. Crash
+2. `pip install --user -U yt-dlp yt-dlp-ejs`. Picks up the latest
+   extractor + n-challenge solver into the runner's user site. Failure
+   is logged and ignored (falls back to the image-baked version).
+3. `UPDATE jobs SET status='queued' WHERE status='running'`. Crash
    recovery: if the process died mid-pipeline, the row is now back in the
    queue and will be retried on next worker pick-up.
-3. `SELECT id FROM jobs WHERE status='queued' ORDER BY created_at` →
+4. `SELECT id FROM jobs WHERE status='queued' ORDER BY created_at` →
    `Queue.put(id)` for each.
-4. Spawn worker thread.
+5. Spawn worker thread.
 
 This is the *only* retry path. Failed jobs (`status='failed'`) are NOT
 re-enqueued on startup. A failed job is a decision, not a transient state.
