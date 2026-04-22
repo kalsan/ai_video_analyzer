@@ -1,0 +1,11 @@
+data/*
+!data/.gitkeep
+__pycache__/
+**/__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.pytest_cache/
+docker-compose.yml
+.env
+config/prompt.md

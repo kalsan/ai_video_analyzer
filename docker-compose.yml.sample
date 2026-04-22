@@ -1,0 +1,11 @@
+services:
+  ai_video_analyzer:
+    build: .
+    image: your-registry.local/ai-video-analyzer:latest
+    ports:
+      - "8000:8000" # for local deployment
+    volumes:
+      - ./data:/data
+    env_file:
+      - .env
+    restart: unless-stopped
