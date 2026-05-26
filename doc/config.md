@@ -34,8 +34,11 @@ videos).
 |--------------------------|---------|-------------------------------------------------------------|
 | `FRAME_INTERVAL_SECONDS` | `5`     | One frame every N seconds via ffmpeg.                       |
 | `MAX_FRAMES_TO_LLM`      | `30`    | Hard cap on frames sent to the vision model; subsampled.    |
-| `WHISPER_MODEL`          | `base`  | `tiny`, `base`, `small`, `medium`, `large`. Size vs accuracy. |
+| `WHISPER_MODEL`          | `base`  | `tiny`, `base`, `small`, `medium`, `large-v3`. Size vs accuracy. Loaded via faster-whisper from HF. |
 | `WHISPER_LANGUAGE`       | `de`    | ISO code. Set to the dominant narration language of your videos. |
+| `WHISPER_COMPUTE_TYPE`   | `int8`  | CTranslate2 compute type. CPU: `int8` (fast, low RAM), `int8_float32`, `float32`. |
+| `WHISPER_VAD`            | `true`  | Skip silence via Silero VAD. Speeds up videos with pauses. Set `false` to disable. |
+| `WHISPER_CPU_THREADS`    | `0`     | `0` = library default (all cores). Set explicit if pinning. |
 
 ## LLM
 

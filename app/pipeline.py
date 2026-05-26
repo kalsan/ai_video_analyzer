@@ -80,23 +80,47 @@ def _extract_frames(video_path: str, workdir: str) -> str:
     return frames_dir
 
 
+def _format_vtt_timestamp(seconds: float) -> str:
+    if seconds < 0:
+        seconds = 0.0
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = seconds - hours * 3600 - minutes * 60
+    return f"{hours:02d}:{minutes:02d}:{secs:06.3f}"
+
+
 def _extract_transcript(video_path: str, workdir: str) -> str:
-    _run(
-        [
-            "whisper", video_path,
-            "--language", config.WHISPER_LANGUAGE,
-            "--output_dir", workdir,
-            "--output_format", "vtt",
-            "--model", config.WHISPER_MODEL,
-        ]
+    from faster_whisper import WhisperModel
+
+    log.info(
+        "faster-whisper: model=%s lang=%s compute=%s vad=%s",
+        config.WHISPER_MODEL,
+        config.WHISPER_LANGUAGE,
+        config.WHISPER_COMPUTE_TYPE,
+        config.WHISPER_VAD,
     )
-    vtt_files = glob.glob(os.path.join(workdir, "*.vtt"))
-    if vtt_files:
-        return Path(vtt_files[0]).read_text()
-    txt_files = glob.glob(os.path.join(workdir, "*.txt"))
-    if txt_files:
-        return Path(txt_files[0]).read_text()
-    return ""
+    model = WhisperModel(
+        config.WHISPER_MODEL,
+        device="cpu",
+        compute_type=config.WHISPER_COMPUTE_TYPE,
+        cpu_threads=config.WHISPER_CPU_THREADS,
+    )
+    segments, _info = model.transcribe(
+        video_path,
+        language=config.WHISPER_LANGUAGE,
+        vad_filter=config.WHISPER_VAD,
+    )
+
+    lines = ["WEBVTT", ""]
+    for seg in segments:
+        lines.append(f"{_format_vtt_timestamp(seg.start)} --> {_format_vtt_timestamp(seg.end)}")
+        lines.append(seg.text.strip())
+        lines.append("")
+
+    vtt = "\n".join(lines)
+    out_path = os.path.join(workdir, Path(video_path).stem + ".vtt")
+    Path(out_path).write_text(vtt, encoding="utf-8")
+    return vtt
 
 
 def _analyze(frames_dir: str, transcript: str) -> str:

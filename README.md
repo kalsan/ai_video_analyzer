@@ -15,7 +15,7 @@ Pipeline:
 
 1. Download video (yt-dlp).
 2. Extract 1 frame every 5 seconds (ffmpeg).
-3. Transcribe audio to VTT (openai-whisper).
+3. Transcribe audio to VTT (faster-whisper, CPU int8).
 4. Send subsampled frames + transcript to a vision-capable LLM with the
    configured system prompt.
 5. Return the LLM's markdown as the job result.
@@ -23,7 +23,7 @@ Pipeline:
 ## Origin
 
 Extracted from a larger web application so the heavy ML dependencies
-(ffmpeg + python + whisper, ~2 GB) could live in their own image and
+(ffmpeg + python + faster-whisper, ~1 GB) could live in their own image and
 evolve independently of the caller.
 
 The caller owns the decision *when* to analyse a video and *how to

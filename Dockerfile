@@ -7,10 +7,8 @@ RUN apt-get update -qq && \
 
 WORKDIR /srv
 COPY requirements.txt .
-# openai-whisper 20240930 setup.py imports pkg_resources, which setuptools>=81 removed.
-# Pre-install setuptools<81 and disable build isolation so whisper builds against it.
-RUN pip install --no-cache-dir --upgrade pip "setuptools<81" wheel && \
-    pip install --no-cache-dir --no-build-isolation -r requirements.txt && \
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir -U yt-dlp yt-dlp-ejs
 
 COPY app ./app

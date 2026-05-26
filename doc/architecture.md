@@ -15,7 +15,7 @@
            │ run(url, workdir)
            ▼
 ┌───────────────────────┐
-│  pipeline.py          │  yt-dlp → ffmpeg → whisper → llm.chat
+│  pipeline.py          │  yt-dlp → ffmpeg → faster-whisper → llm.chat
 └──────────┬────────────┘
            │
            ▼
@@ -33,7 +33,7 @@ The worker is `threading.Thread(daemon=True)` driven by a
 push job IDs onto the queue; the worker pulls and runs one at a time.
 
 Serial-by-construction: if you want concurrency, you must change the
-worker, not add more queue consumers. `openai-whisper` and multi-frame
+worker, not add more queue consumers. `faster-whisper` and multi-frame
 vision LLM calls are CPU/GPU-bound anyway — parallelism buys little.
 
 ## Database
@@ -128,11 +128,11 @@ in `finally` even on exception. Contains:
 
 - `video.<ext>` — raw download from yt-dlp.
 - `frames/frame_0001.jpg ... frame_NNNN.jpg` — one per `FRAME_INTERVAL_SECONDS`.
-- `video.vtt` (or `.txt` fallback) — whisper output.
+- `video.vtt` — faster-whisper output (written by pipeline, not the library).
 
 ### Frame subsampling
 
-Whisper VTT can be huge (~minutes of tokens). Vision model context is the
+Faster-whisper VTT can be huge (~minutes of tokens). Vision model context is the
 bottleneck, so frames are subsampled to at most `MAX_FRAMES_TO_LLM` (30 by
 default) using even striding:
 
@@ -160,7 +160,7 @@ Order matters: frame markers precede their image, transcript comes last.
 
 Every worker exception is caught, logged with `logging.exception`, and
 written to `jobs.error` as a plain string. The pipeline does NOT retry —
-if yt-dlp hit a 403, whisper OOMed, or the LLM timed out, the operator or
+if yt-dlp hit a 403, faster-whisper OOMed, or the LLM timed out, the operator or
 the caller decides whether to resubmit.
 
 HTTP handlers translate DB state to status codes (see [api.md](api.md)).
