@@ -1,6 +1,6 @@
 # DEPRECATED / ARCHIVED
 
-This repo has been deprecated in favor of [text](https://github.com/kalsan/vidwit).
+This repo has been deprecated in favor of [vidwit](https://github.com/kalsan/vidwit).
 
 # AI video analyzer
 
