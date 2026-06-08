@@ -15,7 +15,7 @@
            │ run(url, workdir)
            ▼
 ┌───────────────────────┐
-│  pipeline.py          │  yt-dlp → ffmpeg → faster-whisper → llm.chat
+│  pipeline.py          │  yt-dlp → vidwit (engine) → llm.chat synthesis
 └──────────┬────────────┘
            │
            ▼
@@ -33,8 +33,8 @@ The worker is `threading.Thread(daemon=True)` driven by a
 push job IDs onto the queue; the worker pulls and runs one at a time.
 
 Serial-by-construction: if you want concurrency, you must change the
-worker, not add more queue consumers. `faster-whisper` and multi-frame
-vision LLM calls are CPU/GPU-bound anyway — parallelism buys little.
+worker, not add more queue consumers. vidwit's per-window vision LLM
+calls are CPU/GPU-bound anyway — parallelism buys little.
 
 ## Database
 
@@ -127,40 +127,54 @@ Per-job working directory: `$WORK_DIR/<job_id>`. Created fresh, removed
 in `finally` even on exception. Contains:
 
 - `video.<ext>` — raw download from yt-dlp.
-- `frames/frame_0001.jpg ... frame_NNNN.jpg` — one per `FRAME_INTERVAL_SECONDS`.
-- `video.vtt` — faster-whisper output (written by pipeline, not the library).
+- `vidwit-scratch/` — vidwit's per-video scratch (audio.wav, frames,
+  per-window chunks, transcript.json). Wiped after successful run unless
+  `keep_scratch` is on.
+- `witness/video.md` — vidwit's witness markdown (TOC + timecoded
+  blocks + content warnings). Fed into the synthesis call.
 
-### Frame subsampling
+### Engine: vidwit
 
-Faster-whisper VTT can be huge (~minutes of tokens). Vision model context is the
-bottleneck, so frames are subsampled to at most `MAX_FRAMES_TO_LLM` (30 by
-default) using even striding:
+The analysis engine is the [vidwit](https://pypi.org/project/vidwit/)
+package (PyPI). It
+runs per-window (`VIDWIT_WINDOW_S` seconds, `VIDWIT_OVERLAP_S` overlap)
+with rolling context, so videos that don't fit in a single LLM call still
+produce a coherent output. Internally:
 
-```python
-step = ceil(len(frames) / MAX_FRAMES_TO_LLM)
-selected = frames[::step]
+```
+ffmpeg → frames (at VIDWIT_FPS) ┐
+faster-whisper word-level ──────┼─► per-window vision LLM ─► chunk_NNNN.md
+rolling tail + capture metadata ┘                            (resumable)
+                                                                │
+                                                                ▼
+                                                        assemble + TOC
+                                                                │
+                                                                ▼
+                                                        witness markdown
 ```
 
-Each selected frame is tagged with its timestamp (minutes:seconds) so the
-LLM can cross-reference the VTT narration.
+### Synthesis call
 
-### LLM call
+A second LLM call applies `config/prompt.md` (`ANALYSIS_PROMPT`) over the
+witness markdown to produce the job result. Text-only — frames have
+already been described by vidwit:
 
-`llm.chat(system=ANALYSIS_PROMPT, user_parts=[...])`.
+```python
+llm.chat(
+    system=ANALYSIS_PROMPT,
+    user_parts=[{"type": "text", "text": witness_md}],
+)
+```
 
-`user_parts` is an ordered list of:
-
-- `{"type": "text", "text": "[Frame at M:SS]"}` — timestamp marker.
-- `{"type": "image", "data": bytes, "media_type": "image/jpeg"}` — frame.
-- A final `{"type": "text", "text": "## Transcript with timestamps\n\n..."}`.
-
-Order matters: frame markers precede their image, transcript comes last.
+This two-stage design keeps the service contract unchanged (one
+freeform markdown per job) while delegating the expensive
+multimodal grounding to vidwit's chunked pipeline.
 
 ## Error handling
 
 Every worker exception is caught, logged with `logging.exception`, and
 written to `jobs.error` as a plain string. The pipeline does NOT retry —
-if yt-dlp hit a 403, faster-whisper OOMed, or the LLM timed out, the operator or
+if yt-dlp hit a 403, vidwit failed transcription, or the LLM timed out, the operator or
 the caller decides whether to resubmit.
 
 HTTP handlers translate DB state to status codes (see [api.md](api.md)).

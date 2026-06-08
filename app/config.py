@@ -4,13 +4,18 @@ from pathlib import Path
 DB_PATH = os.environ.get("DB_PATH", "/data/jobs.db")
 WORK_DIR = os.environ.get("WORK_DIR", "/work")
 
-FRAME_INTERVAL_SECONDS = int(os.environ.get("FRAME_INTERVAL_SECONDS", "5"))
-MAX_FRAMES_TO_LLM = int(os.environ.get("MAX_FRAMES_TO_LLM", "30"))
-WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base")
+WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small")
 WHISPER_LANGUAGE = os.environ.get("WHISPER_LANGUAGE", "de")
-WHISPER_COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")
-WHISPER_VAD = os.environ.get("WHISPER_VAD", "true").lower() in ("1", "true", "yes")
-WHISPER_CPU_THREADS = int(os.environ.get("WHISPER_CPU_THREADS", "0"))
+WHISPER_DEVICE = os.environ.get("WHISPER_DEVICE", "auto")
+
+VIDWIT_FPS = float(os.environ.get("VIDWIT_FPS", "1.0"))
+VIDWIT_WINDOW_S = float(os.environ.get("VIDWIT_WINDOW_S", "10.0"))
+VIDWIT_OVERLAP_S = float(os.environ.get("VIDWIT_OVERLAP_S", "1.0"))
+VIDWIT_MAX_TOKENS = (
+    int(os.environ["VIDWIT_MAX_TOKENS"])
+    if os.environ.get("VIDWIT_MAX_TOKENS")
+    else None
+)
 
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "lmstudio").lower()
 LLM_READ_TIMEOUT = int(os.environ.get("LLM_READ_TIMEOUT", "900"))

@@ -30,22 +30,27 @@ videos).
 
 ## Pipeline knobs
 
-| Var                      | Default | Notes                                                       |
-|--------------------------|---------|-------------------------------------------------------------|
-| `FRAME_INTERVAL_SECONDS` | `5`     | One frame every N seconds via ffmpeg.                       |
-| `MAX_FRAMES_TO_LLM`      | `30`    | Hard cap on frames sent to the vision model; subsampled.    |
-| `WHISPER_MODEL`          | `base`  | `tiny`, `base`, `small`, `medium`, `large-v3`. Size vs accuracy. Loaded via faster-whisper from HF. |
-| `WHISPER_LANGUAGE`       | `de`    | ISO code. Set to the dominant narration language of your videos. |
-| `WHISPER_COMPUTE_TYPE`   | `int8`  | CTranslate2 compute type. CPU: `int8` (fast, low RAM), `int8_float32`, `float32`. |
-| `WHISPER_VAD`            | `true`  | Skip silence via Silero VAD. Speeds up videos with pauses. Set `false` to disable. |
-| `WHISPER_CPU_THREADS`    | `0`     | `0` = library default (all cores). Set explicit if pinning. |
+The analysis engine is [vidwit](https://pypi.org/project/vidwit/),
+pulled from PyPI (pinned in `requirements.txt`). It owns frame
+extraction, transcription and the per-window vision LLM call. Below
+knobs are forwarded into it.
+
+| Var                  | Default | Notes                                                                              |
+|----------------------|---------|------------------------------------------------------------------------------------|
+| `WHISPER_MODEL`      | `small` | `tiny`, `base`, `small`, `medium`, `large-v3`. Loaded via faster-whisper from HF. |
+| `WHISPER_LANGUAGE`   | `de`    | ISO code passed to vidwit as `audio_language`. Skips auto-detect.                  |
+| `WHISPER_DEVICE`     | `auto`  | `auto` picks CUDA if available else CPU+int8. Force `cpu` to pin.                  |
+| `VIDWIT_FPS`         | `1.0`   | Frame sampling rate for vidwit's per-window analysis.                              |
+| `VIDWIT_WINDOW_S`    | `10.0`  | Window length in seconds.                                                          |
+| `VIDWIT_OVERLAP_S`   | `1.0`   | Overlap between windows.                                                           |
+| `VIDWIT_MAX_TOKENS`  | unset   | Cumulative LLM token cap per video. Unset = unlimited. Aborts + assembles when hit. |
 
 ## LLM
 
 | Var                 | Default                                              | Notes                                               |
 |---------------------|------------------------------------------------------|-----------------------------------------------------|
 | `LLM_PROVIDER`      | `lmstudio`                                           | `lmstudio` or `anthropic`.                          |
-| `LLM_READ_TIMEOUT`  | `900`                                                | Seconds. Vision calls with 30 frames can be slow.   |
+| `LLM_READ_TIMEOUT`  | `900`                                                | Seconds. Per-window vidwit calls and final synthesis. |
 | `LLM_MAX_TOKENS`    | `4000`                                               | Per response.                                       |
 | `LLM_TEMPERATURE`   | `0.2`                                                | Low — we want consistent structured output.         |
 | `LM_STUDIO_URL`     | `http://localhost:1234/v1/chat/completions`          | OpenAI-compatible endpoint.                         |

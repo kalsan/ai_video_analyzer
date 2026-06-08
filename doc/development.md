@@ -15,10 +15,10 @@ ai_video_analyzer/
     config.py       # env vars, prompt loader
     db.py           # SQLite DAO
     queue.py        # worker thread + startup recovery
-    pipeline.py     # yt-dlp → ffmpeg → faster-whisper → LLM
-    llm.py          # LM Studio + Anthropic providers
+    pipeline.py     # yt-dlp → vidwit engine → synthesis call
+    llm.py          # LM Studio + Anthropic providers (used for synthesis)
   config/
-    prompt.md.sample  # default/generic system prompt
+    prompt.md.sample  # default/generic synthesis prompt
     prompt.md         # your customised prompt (gitignored)
   data/
     .gitkeep        # bind-mount target for jobs.db
@@ -49,9 +49,9 @@ DB_PATH=./data/jobs.db WORK_DIR=./tmp/work \
   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-`faster-whisper` pulls CTranslate2 (no torch); install is much lighter
-(~200 MB). Model weights download lazily on first transcribe call into
-`~/.cache/huggingface`.
+`vidwit` pulls `faster-whisper` + `ctranslate2` (no torch); install is
+~200 MB. Whisper model weights download lazily on first transcribe call
+into `~/.cache/huggingface`.
 
 ## Smoke test
 
@@ -89,7 +89,8 @@ sqlite3 data/jobs.db "DELETE FROM jobs WHERE url = '...';"
 Uvicorn logs + app logs go to stdout. Each job logs:
 
 - `job N starting: <url>`
-- `sending K/M frames to LLM`
+- vidwit per-chunk progress (chunk X/N, ETA, cumulative tokens)
+- `synthesize: K chars of witness markdown`
 - `job N done` or `job N failed` with full traceback.
 
 ## Known gotchas
@@ -118,14 +119,18 @@ Uvicorn logs + app logs go to stdout. Each job logs:
   nonsense — no exception raised.
 - **Whisper language is baked per deploy** (`WHISPER_LANGUAGE`). If a
   caller submits an English video while the service runs with `de`,
-  faster-whisper will still try — quality will drop. No per-request
-  override yet; add to the POST body if needed.
+  vidwit will still try — quality will drop. No per-request override
+  yet; add to the POST body if needed.
 - **Faster-whisper model cache** lives in `~/.cache/huggingface` inside
   the container. Wiped on container rebuild. To persist, bind-mount it
   (saves a few hundred MB of re-download per restart for `large-v3`).
-- **CPU compute type** is `int8` by default for ~4× speedup over fp32 at
-  negligible WER cost. If you see accuracy regressions, try
-  `WHISPER_COMPUTE_TYPE=int8_float32`.
+- **vidwit version** is pinned in `requirements.txt`. To upgrade, bump
+  the pin and rebuild. The package depends on `faster-whisper` and
+  `ctranslate2`; no torch needed.
+- **Two LLM calls per job**: vidwit makes one call per window
+  (10s default), then a final synthesis call runs `ANALYSIS_PROMPT`
+  over the witness markdown. Both share the same `LLM_PROVIDER` and
+  endpoint configuration.
 
 ## Deploy
 

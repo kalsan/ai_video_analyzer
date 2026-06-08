@@ -5,6 +5,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+from vidwit import config as vidwit_cfg_mod
+from vidwit import pipeline as vidwit_pipeline
+
 from . import config, llm
 
 log = logging.getLogger(__name__)
@@ -15,12 +18,11 @@ class PipelineError(Exception):
 
 
 def run(url: str, workdir: str) -> str:
-    """Download video, extract frames + transcript, call LLM, return analysis."""
+    """Download video, run vidwit witness pass, then synthesize via LLM."""
     Path(workdir).mkdir(parents=True, exist_ok=True)
     video_path = _download_video(url, workdir)
-    frames_dir = _extract_frames(video_path, workdir)
-    transcript = _extract_transcript(video_path, workdir)
-    return _analyze(frames_dir, transcript)
+    witness_md = _vidwit_witness(video_path, workdir)
+    return _synthesize(witness_md)
 
 
 def _run(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProcess:
@@ -66,86 +68,74 @@ def _download_video(url: str, workdir: str) -> str:
     return matches[0]
 
 
-def _extract_frames(video_path: str, workdir: str) -> str:
-    frames_dir = os.path.join(workdir, "frames")
-    Path(frames_dir).mkdir(parents=True, exist_ok=True)
-    _run(
-        [
-            "ffmpeg", "-i", video_path,
-            "-vf", f"fps=1/{config.FRAME_INTERVAL_SECONDS}",
-            "-q:v", "2",
-            os.path.join(frames_dir, "frame_%04d.jpg"),
-        ]
+def _vidwit_witness(video_path: str, workdir: str) -> str:
+    """Run vidwit on the downloaded video. Returns its markdown record."""
+    video = Path(video_path)
+    out_dir = Path(workdir) / "witness"
+    scratch_dir = Path(workdir) / "vidwit-scratch"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    scratch_dir.mkdir(parents=True, exist_ok=True)
+
+    cfg = vidwit_cfg_mod.Config(
+        fps=config.VIDWIT_FPS,
+        window=config.VIDWIT_WINDOW_S,
+        overlap=config.VIDWIT_OVERLAP_S,
+        overwrite=True,
+        resume=False,
+        keep_scratch=False,
+        paths_home=out_dir,
+        paths_temp=scratch_dir,
+        whisper_model=config.WHISPER_MODEL,
+        whisper_device=config.WHISPER_DEVICE,
+        audio_language=config.WHISPER_LANGUAGE,
+        max_tokens=config.VIDWIT_MAX_TOKENS,
+        llm=vidwit_cfg_mod.LLMConfig(
+            provider=config.LLM_PROVIDER,
+            model=_vidwit_model_for(config.LLM_PROVIDER),
+            base_url=_vidwit_base_url_for(config.LLM_PROVIDER),
+            api_key=config.ANTHROPIC_API_KEY,
+            max_output_tokens=config.LLM_MAX_TOKENS,
+            request_timeout=float(config.LLM_READ_TIMEOUT),
+        ),
     )
-    return frames_dir
-
-
-def _format_vtt_timestamp(seconds: float) -> str:
-    if seconds < 0:
-        seconds = 0.0
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = seconds - hours * 3600 - minutes * 60
-    return f"{hours:02d}:{minutes:02d}:{secs:06.3f}"
-
-
-def _extract_transcript(video_path: str, workdir: str) -> str:
-    from faster_whisper import WhisperModel
 
     log.info(
-        "faster-whisper: model=%s lang=%s compute=%s vad=%s",
-        config.WHISPER_MODEL,
-        config.WHISPER_LANGUAGE,
-        config.WHISPER_COMPUTE_TYPE,
-        config.WHISPER_VAD,
+        "vidwit: model=%s lang=%s fps=%g window=%gs overlap=%gs",
+        cfg.whisper_model, cfg.audio_language, cfg.fps, cfg.window, cfg.overlap,
     )
-    model = WhisperModel(
-        config.WHISPER_MODEL,
-        device="cpu",
-        compute_type=config.WHISPER_COMPUTE_TYPE,
-        cpu_threads=config.WHISPER_CPU_THREADS,
+    try:
+        out_md_path = vidwit_pipeline.run_one(video, cfg)
+    except Exception as e:
+        raise PipelineError(f"vidwit failed: {e}") from e
+    log.info("vidwit: wrote %s", out_md_path)
+    return out_md_path.read_text(encoding="utf-8")
+
+
+def _vidwit_model_for(provider: str) -> str:
+    if provider == "lmstudio":
+        return config.LM_STUDIO_MODEL
+    if provider == "anthropic":
+        return config.ANTHROPIC_MODEL
+    return ""
+
+
+def _vidwit_base_url_for(provider: str) -> str | None:
+    if provider == "lmstudio":
+        # vidwit appends `/chat/completions`; strip it from our config so
+        # we don't end up with `.../v1/chat/completions/chat/completions`.
+        url = config.LM_STUDIO_URL
+        suffix = "/chat/completions"
+        return url[: -len(suffix)] if url.endswith(suffix) else url
+    return None
+
+
+def _synthesize(witness_md: str) -> str:
+    """Second-stage call: apply ANALYSIS_PROMPT over vidwit's witness markdown."""
+    log.info("synthesize: %d chars of witness markdown", len(witness_md))
+    content = llm.chat(
+        system=config.ANALYSIS_PROMPT,
+        user_parts=[{"type": "text", "text": witness_md}],
     )
-    segments, _info = model.transcribe(
-        video_path,
-        language=config.WHISPER_LANGUAGE,
-        vad_filter=config.WHISPER_VAD,
-    )
-
-    lines = ["WEBVTT", ""]
-    for seg in segments:
-        lines.append(f"{_format_vtt_timestamp(seg.start)} --> {_format_vtt_timestamp(seg.end)}")
-        lines.append(seg.text.strip())
-        lines.append("")
-
-    vtt = "\n".join(lines)
-    out_path = os.path.join(workdir, Path(video_path).stem + ".vtt")
-    Path(out_path).write_text(vtt, encoding="utf-8")
-    return vtt
-
-
-def _analyze(frames_dir: str, transcript: str) -> str:
-    frame_paths = sorted(glob.glob(os.path.join(frames_dir, "*.jpg")))
-    if not frame_paths:
-        raise PipelineError("No frames extracted")
-
-    step = max(-(-len(frame_paths) // config.MAX_FRAMES_TO_LLM), 1)
-    selected = frame_paths[::step]
-    log.info("sending %d/%d frames to LLM", len(selected), len(frame_paths))
-
-    parts: list[dict] = []
-    for idx, path in enumerate(selected):
-        ts = idx * step * config.FRAME_INTERVAL_SECONDS
-        parts.append({"type": "text", "text": f"[Frame at {ts // 60}:{ts % 60:02d}]"})
-        parts.append(
-            {
-                "type": "image",
-                "data": Path(path).read_bytes(),
-                "media_type": "image/jpeg",
-            }
-        )
-    parts.append({"type": "text", "text": f"## Transcript with timestamps\n\n{transcript}"})
-
-    content = llm.chat(system=config.ANALYSIS_PROMPT, user_parts=parts)
     if not content.strip():
-        raise PipelineError("LLM returned empty content")
+        raise PipelineError("LLM returned empty synthesis")
     return content

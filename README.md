@@ -1,3 +1,7 @@
+# DEPRECATED / ARCHIVED
+
+This repo has been deprecated in favor of [text](https://github.com/kalsan/vidwit).
+
 # AI video analyzer
 
 HTTP microservice that takes a video URL (YouTube or similar) and returns a
@@ -14,21 +18,22 @@ summary is determined by the operator-supplied system prompt.
 Pipeline:
 
 1. Download video (yt-dlp).
-2. Extract 1 frame every 5 seconds (ffmpeg).
-3. Transcribe audio to VTT (faster-whisper, CPU int8).
-4. Send subsampled frames + transcript to a vision-capable LLM with the
-   configured system prompt.
-5. Return the LLM's markdown as the job result.
+2. Run [vidwit](https://pypi.org/project/vidwit/) (PyPI dep) as analysis engine:
+   ffmpeg frames + faster-whisper word-level transcript + chunked
+   vision-LLM windows with rolling context → witness markdown.
+3. Synthesize: second LLM call applies `config/prompt.md` over the
+   witness markdown to produce the final summary.
+4. Return synthesized markdown as the job result.
 
 ## Origin
 
 Extracted from a larger web application so the heavy ML dependencies
-(ffmpeg + python + faster-whisper, ~1 GB) could live in their own image and
-evolve independently of the caller.
+(ffmpeg + python + vidwit + faster-whisper, ~1 GB) could live in their
+own image and evolve independently of the caller.
 
 The caller owns the decision *when* to analyse a video and *how to
-display the result*. This service owns the *how*: download,
-transcription, frame extraction, LLM call.
+display the result*. This service owns the *how*: download, vidwit
+witness pass, synthesis call.
 
 ## Scope
 
